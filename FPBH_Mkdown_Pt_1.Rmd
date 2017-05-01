@@ -1,0 +1,237 @@
+---
+title: ""
+author: "Jonathan Jay, JD MA\nHarvard T.H. Chan School of Public Health"
+date: ""
+output: html_document
+---
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.width=8, fig.height=5.5, fig.path='Figs/',
+                      echo=FALSE, warning=FALSE, message=FALSE)
+
+library(ggplot2)
+library(ggthemes)
+library(plyr)
+library(dplyr)
+library(tidyr)
+library(leaflet)
+library(imager)
+
+mypal <- c(rgb(42/255, 69/255, 122/255), rgb(104/255, 145/255, 151/255), rgb(239/255, 65/255, 35/255), rgb(149/255, 181/255, 223/255), rgb(122/255, 179/255, 190/255), rgb(51/255, 100/255, 122/255))
+
+houses <- read.csv("Boston Fire Proof houses 4-29.csv")
+```
+
+# **Fire Proof: Housing Type, Citizen Complaint and Fire Risk in Boston, 2012-2016**
+
+## Jonathan Jay
+## May 1 (with ongoing updates)
+
+## Prologue
+
+This analysis is dedicated to the 17 Dorchester residents displaced from their homes by an early-morning fire Sunday, April 23, 2017. 
+
+The six-alarm blaze started at 8 Marie St, a three-family house overlooking Ronan Park, sometime before 4 a.m. Flames leapt to neighboring houses on either side; the heat alone  melted siding on other nearby properties. 80 firefighters were called in. They brought the fire under control without major injuries, but residents of 6 and 10 Marie St. were especially shaken up.
+
+For those neighbors, the threat had long been apparent: nearby residents told the *Boston Globe's* Aimee Ortiz that the house had been unoccupied for at least nine years. Google Street View's [entry for the property](https://www.google.com/maps/place/8+Marie+St,+Dorchester,+MA+02122/@42.3055733,-71.0639388,3a,37.5y,336.78h,99.05t/data=!3m6!1e1!3m4!1sTy5xZ1n0MRAhr7f74yOWtA!2e0!7i13312!8i6656!4m5!3m4!1s0x89e37bba82ec1f7d:0xeca9172da8b6120e!8m2!3d42.305703!4d-71.0640387!6m1!1e1), taken in 2014, shows the house boarded, up with the exterior in poor condition. 
+
+```{r}
+layout(t(1:2))
+p1 <- load.image("~/Desktop/8 marie st.png")
+p2 <- load.image("~/Desktop/8 marie st 2.png")
+p1 <- resize(p1, 1.5)
+p2 <- resize(p2, 1.5)
+
+plot(p1, axes=F)
+plot(p2, axes=F)
+```
+
+Firefighters, however, began by sweeping for residents: "You have to look under beds, you have to look in closets...and then eventually somebody told them, ‘oh, that’s a vacant building,’ but you don’t know that when you show up," a Boston Fire Department spokesman told the *Globe*. 
+
+One goal of this analysis is to show how data collected by other City of Boston agencies could assist the Fire Department in situations like these. Just a few years of citizen reports and Inspectional Services Departments records, all captured by the city's 311 database, would have been enough to flag 8 Marie St. as potentially vacant. Other records, like utility billing records, could have provided even more precise evidence. The department could even try a "civic hack" like Louisville, KY, which uses [inexpensive, locally-developed smoke alarm sensors](https://louisvilleky.gov/news/city-roll-out-locally-developed-wireless-smoke-detectors-vacant-abandoned-properties) to catch fires early in abandoned properties.
+
+But the bigger problem has no quick fix. My main objective here is to highlight the need for citywide focus on houses like 8 Marie St. These are the ["problem properties"](http://www.bostonmagazine.com/2011/09/targeting-absentee-landlords-for-their-problem-properties/) that degrade neighborhoods--sometimes slowly, and sometimes quickly. Between 2012 and 2016, citizens complained to the city 15 times about unsafe conditions at 8 Marie St, according to 311 records. While causes of this fire haven't been determined, vacant properties [tend to attract squatters](https://www.theatlantic.com/magazine/archive/2009/03/cops-and-squatters/307286/) and other illicit activities that can contribute to fire risk; they may also be targets for arson. In this case, neighbors' safety concerns were confirmed.
+
+Business as usual won't solve these problems. Since 2012, the Inspectional Services Department issued at least five tickets for unsafe structural conditions at 8 Marie St. When a landlord won't comply, the process for rehabilitating a problem property is long and costly. Boston, to its advantage, has power under 2013's [Rental Registration and Inspection Ordinance](https://www.boston.gov/sites/default/files/rental_inspection_ordinance.pdf) to crack down on rental properties that aren't up to code. 
+
+While inspecting every eligible property is a tall order, not every property poses the same safety risk. That's the focus of this analysis.
+
+# First-Round Findings
+
+
+
+I considered only building fires occuring in Boston housing, since three quarters of fire deaths occur in homes. I further narrowed the analysis only to one-, two-, and three-family residences, comprising roughly half of the residential parcels in the city. 
+
+That's for two reasons: first, it's difficult to make apples-to-apples comparisons between incidents in houses and incidents in apartments or condo buildings. For most fires, we only know the street address, so for. A fire is more likely to occur in a large apartment building than in a house, simply because it's got so many more residents. And yet apartments are protected by sprinkler systems and other safety measures, so the injury risk associated with any such fire is usually lower. 
+
+Second, safety protocols for condos and apartment towers are relatively standardized. That's not to say that they couldn't be improved. But the way cities address fire safety in houses, like 8 Marie St., is an area that desperately requires innovation.
+
+With these specifications in mind, let's dive into the results of the analysis.
+
+## 1. Know your house types
+
+The most common house type in the City of Boston is the owner-occupied single-family. When the owner isn't present, three-families are most common.
+
+
+```{r}
+## houses by type
+houses$LU <- factor(houses$LU, levels =c("One-family", "Two-family", "Three-family"),
+                      labels = c("One-family", "Two-family", "Three-family"))
+
+levels(houses$OWN_OCC) <- c("Owner absent", "Owner-occupied")
+
+houses$compl2_bin_pre <- factor(houses$compl2_bin_pre, levels= c("No complaints", "Complaints filed"), labels=c("No complaints", "1+ complaints filed"))
+
+ttext <- theme(plot.title = element_text(size=16)) 
+stext <- theme(strip.text = element_text(size=12))
+
+ggplot(houses, aes(x=LU)) + geom_bar(fill=mypal[1]) + facet_wrap(~OWN_OCC) +
+  labs(x="", y="", title="Owner occupancy by house type, 2016",
+       caption="Data source: Analyze Boston data portal (2016 tax assessment)") + theme_minimal() + ttext +stext
+
+```
+
+
+Owner-occupancy rates and housing types vary significantly by neighborhood. For example, West Roxbury is overwhelming single-family, owner-occupied; Allston and Brighton's most common type is two-family, with high renter-only occupancy; and while three-families are most common in both Dorchester and East Boston, Dorchester's owner-occupancy rate is substantially higher than East Boston's.
+
+
+
+```{r, echo=FALSE}
+##House types by neighborhood
+lu_nh <- houses %>% group_by(Neighborhood, LU) %>%
+  summarise(n = n())
+
+ggplot(lu_nh, aes(x=LU, y=n)) + geom_bar(stat="identity", position = "dodge", width=0.6, fill=mypal[3]) +
+  facet_wrap(~Neighborhood) + scale_x_discrete(labels=c("One-fam", "Two-fam", "Three-fam")) +
+  labs(x="", title="House types by neighborhood, 2016") + theme_minimal() + ttext
+```
+  
+
+```{r}
+oo_nh <- houses %>% group_by(Neighborhood, OWN_OCC) %>%
+  summarise(n = n())
+
+ggplot(oo_nh, aes(x=reorder(Neighborhood, n), y=n, fill=OWN_OCC)) + 
+  geom_bar(stat="identity", width=0.75, position = "stack") + 
+  coord_flip() + theme_minimal() + scale_fill_manual(name="", breaks=c("Owner-occupied", "Owner absent"), values = mypal[c(2, 6)]) +
+  theme(legend.position = c(0.75, 0.25)) +
+  labs(x="", y="\nTotal number", title="Houses by neighborhood & owner-occupancy status, 2016",
+       caption = "\nData source: Analyze Boston data portal (2016 tax assessment)") + ttext
+
+
+```
+  
+
+## 2. Cause for complaints 
+
+Boston actively solicits feedback from residents and has a particularly good 311 system. 
+
+Perhaps as a consequence, citizen complaints, for building condition (mostly exterior physical problems) and housing condition (mostly interior living problems), are highly prevalent: between 2012 and 2016, 14% of houses were the subject of a building-related complaint and 7% were the subject of a housing-related complaint. In total, 19% of houses received at least one building or housing complaint. While 61 is the most complaints associated with any one property, a majority (81%) of those receiving violations received only one or two.
+
+Neighborhoods varied in their per-parcel rates of complaints. They were highest in an arc encompassing Fenway, Back Bay and Beacon Hill (coded in the city's address database as "Boston" and recoded as "Downtown" here) and lowest in Chestnut Hill. 
+
+```{r, echo=F}
+
+cpl.nh <- houses %>% group_by(Neighborhood) %>%
+  summarise(Building = sum(build_cpl>0)/n(),
+            Housing = sum(hous_cpl>0)/n()) %>%
+  gather(type, value, -Neighborhood)
+
+ggplot(cpl.nh, aes(x=reorder(Neighborhood, value), y=value, fill=type)) + 
+  geom_bar(stat="identity", position="dodge", width=0.75) + 
+  coord_flip() + facet_wrap(~type) +
+  labs(x="", y="\nProportion of parcels receiving complaints", title="Complaint rates by neighborhood, 2012-2016",
+       caption="\nData source: Analyze Boston data portal (311 service requests)") + scale_fill_manual(name="", values=mypal[c(5, 4)]) + theme_minimal()  + theme(legend.position = "") + ttext +stext 
+```
+
+
+Citizen complaints are lower when owners occupy the property--even controlling for house type. The most complaint-prone housing is three-family with owner absent:
+
+
+```{r, echo=F}
+ggplot(houses, aes(x=LU, fill=factor(compl2_ct > 0))) + geom_bar() + facet_wrap(~OWN_OCC) +
+  scale_fill_manual(name="", labels=c("No complaints", "1+ complaints"), values=mypal[c(1, 3)]) +
+  labs(x="", y="", title="Citizen complaints by house type and owner-occupancy, 2012-2016",
+       caption="\nData source: Analyze Boston data portal (311 requests)") +
+  theme_minimal() + ttext + theme(legend.position = c(.15, .65)) + stext
+```
+
+
+## 3. Correlates of fire
+
+A property owner living in a single-family house had about a 0.6% probability of experiencing a building fire between 2012 and 2016. A non-owner, living in a three-family house without the owner present, had a 3.5% probability of experiencing a building fire in that same time period. It's no surprise that bigger properties, with more residents, face more risk. But higher rates persist even if you divide fire incidents by the number of living units, so that's likely not the whole story.
+
+
+```{r}
+fire.lu <- houses %>% group_by(LU, OWN_OCC) %>%
+  summarize(fire_rate = sum(fire_bin)/n())
+
+ggplot(fire.lu, aes(x=LU, y=fire_rate, fill=OWN_OCC)) + geom_bar(stat="identity") + facet_wrap(~OWN_OCC) +
+  labs(x="", y="Fire incidence rate\n", title="Fire incidence by housing type & owner occupancy, 2012-2016", caption="\nData source: Analyze Boston Open Data Challenge") +
+  scale_fill_manual(values=mypal[c(2, 6)]) + theme_minimal() + theme(legend.position="") + ttext +stext
+```
+
+
+Even more pronounced, however, is an apparent "problem property" effect: across both house types and owner occupancy categories, a prior complaint (2012-2015) was associated with a big jump in 2016 fire incidence:
+
+
+```{r, echo=F, fig.width=10}
+f.cp.lu <- houses %>% group_by(LU, OWN_OCC, compl2_bin_pre) %>%
+  summarize(fire_rate = sum(fire_post)/n(),
+            n = n(),
+            fires=sum(fire_post))
+
+ggplot(f.cp.lu, aes(x=LU, y=fire_rate, fill=compl2_bin_pre)) + geom_bar(stat="identity", width=0.8, position = "dodge") + facet_wrap(~OWN_OCC) + labs(x="", y="Fire incidence rate (2016)\n", title="The 'problem property' effect", subtitle="Across multiple housing categories, prior citizen complaints (2012-2015) were associated with increased fire incidence in 2016", caption="Data source: Analyze Boston data portal") + theme(plot.title = element_text(size=18), legend.position = "bottom") +
+  scale_fill_manual(name="", values=mypal[c(1, 3)], labels=c("No complaints", "1+ complaints")) + theme_minimal() + ttext + stext 
+
+```
+
+
+The biggest apparent jumps were for owner-absent one-families and for owner-occupied three-families. We might speculate that the first group contains vacant houses, while owner-occupied three-family houses with citizen complaints represent an unusual category of problem properties. Still, the small number of total fires, especially in some categories, should keep us from drawing too many conclusions:
+
+
+```{r, fig.width=10}
+ggplot(f.cp.lu, aes(x=LU, y=fire_rate, fill=compl2_bin_pre)) + geom_bar(stat="identity", width=0.8, position = "dodge") + facet_wrap(~OWN_OCC) + labs(x="", y="Fire incidence rate 2016\n", title="Category & incidence totals") + theme(plot.title = element_text(size=18), legend.position = "bottom") +
+  scale_fill_manual(name="", values=mypal[c(1, 3)], labels=c("No complaints", "1+ complaints")) + theme_minimal() +
+  geom_text(aes(x=LU, y=fire_rate, label=paste0(fires, " / ", n)), vjust=-0.5, size=3,
+            position = position_dodge(width=0.8)) + ylim(0, 0.012) +
+  annotate("text", x=2, y=0.011, label= "fires / total parcels") + ttext + stext + theme(axis.title.x = element_text(size=12))
+
+```
+
+
+Among the other potential predictors, I didn't find clear links between fire incidence and a parcel's age; its tax-assessed value (controlling for building type); or the "condition" grades generated by the tax assessor, though there's not much variation in the grades assigned (they're mostly "average").
+
+
+# Neighborhood incidence rates
+
+Neighborhoods do vary substantially. Whereas high complaint rates in "Downtown" didn't carry over to fire risk, high rates in Mission Hill did:
+
+
+```{r, echo=F}
+
+fire.nh <- houses %>% group_by(Neighborhood) %>%
+  summarize(fire_rate = sum(fire_bin)/n())
+
+ggplot(fire.nh, aes(x=reorder(Neighborhood, fire_rate), y=fire_rate)) + geom_bar(stat="identity", fill=mypal[6]) + coord_flip() + labs(y="\nFire incidence rate", x="", title="House fire incidence rates by neighborhood, 2012-2016", subtitle = "Rates may correlate with (a) proportion of student residents and (b) economic disadvantage", caption="\nData source: Analyze Boston Open Data Challenge") + theme_minimal() + ttext
+```
+
+
+The parcel-level data do not allow analysis of student occupancy, but neighborhood-level breakdowns seem to confirm worry about the safety of student housing in places like Mission Hill (median age ~25) and Allston, as highlighted by the *Globe*'s Spotlight Team [2014 report](http://www.bostonglobe.com/metro/specials/shadow-campus). At the same time, neighborhoods like Dorchester, East Boston and Roxbury show elevated risk as well, and more granular breakdowns within these neighborhoods could show higher rates in more-underserved areas.
+
+## Interim conclusions
+
+These data make the case for ramping up efforts to address known unsafe housing conditions. Targeting high-risk properties under the Rental Registration and Inspection Ordinance could eliminate some hazards, while taking the onus off residents to report their landlords (and risk reprisal). When property owners can't or won't fulfill their obligations, getting houses like 8 Marie St into new hands--perhaps community land trusts or other citizen-led arrangements--may be necessary. Although that process won't be easy, at least we know where they are, and that's a start.
+
+On a closing note, here are the houses with ten or more citizen complaints (building/housing condition only) between 2012 and 2016. Scroll over points for their address and the 2016 owner of record:
+
+
+```{r, echo=F}
+houses$INFO <- paste(houses$ST_NUM, houses$ST_NAME, houses$ST_NAME_SUF, "--",
+                     houses$OWNER)
+
+leaflet(data= subset(houses, compl2_ct>=10)) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  addCircleMarkers(~LONGITUDE, ~LATITUDE, label=~INFO, radius=6, color=mypal[3])
+```
+
